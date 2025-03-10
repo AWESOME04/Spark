@@ -10,45 +10,56 @@ import {
   removeUserFromLocalStorage,
   supabase
 } from '@/lib/supabase';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
-type User = {
+// Define your User interface
+interface User {
   id: string;
   email: string;
   username: string;
   profile?: any;
-} | null;
+}
 
 type AuthContextType = {
-  user: User;
+  user: User | null;
   loading: boolean;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  setUser: (user: User) => void;
+  setUser: (user: User | null) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Load user on initial render
+  const transformSupabaseUser = (supabaseUser: SupabaseUser | null): User | null => {
+    if (!supabaseUser) return null;
+    
+    return {
+      id: supabaseUser.id,
+      email: supabaseUser.email ?? '',
+      username: supabaseUser.user_metadata?.username ?? supabaseUser.email ?? '',
+      profile: supabaseUser.user_metadata?.profile
+    };
+  };
+
   useEffect(() => {
     const loadUser = async () => {
       try {
-        // First check localStorage for faster initial load
         const localUser = getUserFromLocalStorage();
         if (localUser) {
           setUser(localUser);
         }
 
-        // Then verify with Supabase
         const currentUser = await getCurrentUser();
         
         if (currentUser) {
-          setUser(currentUser);
-          setUserInLocalStorage(currentUser);
+          const transformedUser = transformSupabaseUser(currentUser);
+          setUser(transformedUser);
+          setUserInLocalStorage(transformedUser);
         } else if (localUser) {
           removeUserFromLocalStorage();
           setUser(null);
@@ -64,12 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     loadUser();
 
-    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         const currentUser = await getCurrentUser();
-        setUser(currentUser);
-        setUserInLocalStorage(currentUser);
+        const transformedUser = transformSupabaseUser(currentUser);
+        setUser(transformedUser);
+        setUserInLocalStorage(transformedUser);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         removeUserFromLocalStorage();
@@ -96,8 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const currentUser = await getCurrentUser();
       if (currentUser) {
-        setUser(currentUser);
-        setUserInLocalStorage(currentUser);
+        const transformedUser = transformSupabaseUser(currentUser);
+        setUser(transformedUser);
+        setUserInLocalStorage(transformedUser);
       }
     } catch (error) {
       console.error('Error refreshing user:', error);
@@ -117,4 +129,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-} 
+}
