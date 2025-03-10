@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Home - Open PRO",
+  title: "Spark - One link for all your socials",
   description: "Page description",
 };
 
